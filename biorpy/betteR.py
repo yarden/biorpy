@@ -5,6 +5,8 @@ from rpy2.robjects import numpy2ri
 import pandas
 
 
+## DEFAULT ARGS, OUTPUT HANDLING
+
 def rx(name):
     """ extracts a value by name from an R object """
     def f(x):
@@ -43,13 +45,14 @@ class Handler(object):
         
         rval = robjects.r[self.name](*args, **defaults)
 
-        result = {"rval":rval}
+        if self.outputs:
+            result = {}
 
-        for output in self.outputs:
-            print self.outputs[output]
-            result[output] = reduce(lambda x, f: f(x), self.outputs[output], rval)
+            for output in self.outputs:
+                result[output] = reduce(lambda x, f: f(x), self.outputs[output], rval)
 
-        return result
+            rval.py = result
+        return rval
 
 class BetteR(object):
     # this in theory could also be a subclass of rpy2.robjects.R
@@ -58,6 +61,8 @@ class BetteR(object):
         self.aliases = {"devoff":"dev.off"}
 
         self._handlers = {}
+
+        # XXX the following need to moved somewhere else
         self.addHandler_(Handler("wilcox.test", 
             outputs={"p.value":[rx("p.value"), item(0), item(0)]}
             )
@@ -89,12 +94,18 @@ class BetteR(object):
         if attr in self.aliases:
             attr = self.aliases[attr]
 
+        if attr.startswith("gg"):
+            print "do something for ggplot..."
+            
         if attr in self._handlers:
             return self._handlers[attr]
         else:
             return robjects.r[attr]
 
 
+## CONVERSION
+
+# this might be best put in a separate module
 def convertToR(obj):
     """
     Convert Pandas/Numpy objects to R objects.
@@ -105,11 +116,12 @@ def convertToR(obj):
     """
     if isinstance(obj, pandas.core.frame.DataFrame):
         return pandasDataFrameToRPy2DataFrame(obj)
-    elif isinstance(obj, pandas.Series):
-        return obj
+    # elif isinstance(obj, pandas.Series):
+    #     return obj
     elif isinstance(obj, numpy.ndarray):
         return numpy2ri.numpy2ri(obj)
-    elif isinstance(obj, )
+    # elif isinstance(obj, list):
+    #     return obj
 
     return obj
 
@@ -140,7 +152,7 @@ if __name__ == '__main__':
     r = BetteR()
 
     result = r["wilcox.test"](robjects.FloatVector(range(5)), robjects.FloatVector([1,2,55,3,6]))
-    print result["p.value"]
+    print result.py["p.value"]
 
     r.plot(robjects.FloatVector(range(5)), robjects.FloatVector([1,2,55,3,6]))
 
