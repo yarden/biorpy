@@ -3,6 +3,7 @@ import operator
 
 from rpy2.robjects import numpy2ri
 import pandas
+import numpy
 
 
 ## DEFAULT ARGS, OUTPUT HANDLING
@@ -18,7 +19,14 @@ def item(i):
     return operator.itemgetter(i)
 
 
+
 class Handler(object):
+    """ Wrapper for R objects to implement:
+    1. default arguments
+    2. argument conversion
+    3. output conversion
+    """
+
     def __init__(self, name, defaults=None, outputs=None):
         """
         :param name: name of the R function
@@ -28,9 +36,6 @@ class Handler(object):
         """
         self.name = name
 
-        if not defaults and not outputs:
-            raise Exception("Need to define at least one of defaults or outputs")
-
         self.defaults = defaults if defaults else {}
         self.outputs = outputs if outputs else {}
 
@@ -38,13 +43,20 @@ class Handler(object):
         self._robject = robjects.r[self.name]
 
     def __call__(self, *args, **kwdargs):
+        # python -> R conversion
+        args = [convertToR(arg) for arg in args]
+        for kwd in kwdargs:
+            kwdargs[kwd] = convertToR(kwdargs[kwd])
+
+        # default arguments
         defaults = self.defaults.copy()
         defaults.update(kwdargs)
 
-        print "calling:", self.name, args, defaults
-        
+        # call R        
         rval = robjects.r[self.name](*args, **defaults)
+        #rval = super(Handler, self).__call__(*args, **defaults)
 
+        # output conversion
         if self.outputs:
             result = {}
 
@@ -54,7 +66,9 @@ class Handler(object):
             rval.py = result
         return rval
 
+
 class BetteR(object):
+    """ Wrapper for rpy2.robjects.R """
     # this in theory could also be a subclass of rpy2.robjects.R
 
     def __init__(self):
@@ -96,11 +110,12 @@ class BetteR(object):
 
         if attr.startswith("gg"):
             print "do something for ggplot..."
-            
+
         if attr in self._handlers:
             return self._handlers[attr]
         else:
-            return robjects.r[attr]
+            #return robjects.r[attr]
+            return Handler(attr)
 
 
 ## CONVERSION
@@ -120,8 +135,20 @@ def convertToR(obj):
     #     return obj
     elif isinstance(obj, numpy.ndarray):
         return numpy2ri.numpy2ri(obj)
-    # elif isinstance(obj, list):
-    #     return obj
+    elif isinstance(obj, list):
+        if len(obj) == 0:
+            return robjects.FloatVector([])
+        else:
+            try:
+                return robjects.FloatVector(obj)
+            except ValueError:
+                pass
+            try:
+                return robjects.StrVector(obj)
+            except ValueError:
+                pass
+
+
 
     return obj
 
@@ -154,8 +181,9 @@ if __name__ == '__main__':
     result = r["wilcox.test"](robjects.FloatVector(range(5)), robjects.FloatVector([1,2,55,3,6]))
     print result.py["p.value"]
 
-    r.plot(robjects.FloatVector(range(5)), robjects.FloatVector([1,2,55,3,6]))
+    #r.plot(robjects.FloatVector(range(5)), robjects.FloatVector([1,2,55,3,6]))
 
+    r.plot([1,2,3,4,5], [1,3,4,4.5,5], col=["red" for i in range(5)])
     for i in range(100000):
         for j in range(1000):
             pass
