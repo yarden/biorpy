@@ -1,4 +1,5 @@
 from rpy2 import robjects
+from collections import OrderedDict
 import operator
 
 from rpy2.robjects import numpy2ri
@@ -87,6 +88,11 @@ class BetteR(object):
             )
         )
 
+        self.addHandler_(Handler("hist", 
+            defaults={"xlab":"", "main":"plot"}
+            )
+        )
+
     def addHandler_(self, handler):
         self._handlers[handler.name] = handler
 
@@ -125,7 +131,7 @@ def convertToR(obj):
     """
     Convert Pandas/Numpy objects to R objects.
 
-    If the input object is a Pandas DataFrame, convert it to
+    If the inumpyut object is a Pandas DataFrame, convert it to
     an R DataFrame.  If it's a Series, treat it like a vector/numpy
     array. 
     """
@@ -152,28 +158,69 @@ def convertToR(obj):
 
     return obj
 
-def pandasDataFrameToRPy2DataFrame(pDataframe):
+VECTOR_TYPES = {numpy.float64: robjects.FloatVector,
+                numpy.float32: robjects.FloatVector,
+                numpy.float: robjects.FloatVector,
+                numpy.int: robjects.IntVector,
+                numpy.int32: robjects.IntVector,
+                numpy.int64: robjects.IntVector,
+                numpy.object_: robjects.StrVector,
+                numpy.str: robjects.StrVector,
+                numpy.bool: robjects.BoolVector}
+
+NA_TYPES = {numpy.float64: robjects.NA_Real,
+            numpy.float32: robjects.NA_Real,
+            numpy.float: robjects.NA_Real,
+            numpy.int: robjects.NA_Integer,
+            numpy.int32: robjects.NA_Integer,
+            numpy.int64: robjects.NA_Integer,
+            numpy.object_: robjects.NA_Character,
+            numpy.str: robjects.NA_Character,
+            numpy.bool: robjects.NA_Logical}
+
+import rpy2.rlike.container as rlc
+
+def pandasDataFrameToRPy2DataFrame(df, strings_as_factors=False):
     """
-    Convert a pandas DataFrame to an Rpy2 DataFrame.
+    Convert a pandas DataFrame to a R data.frame.
+
+    Parameters
+    ----------
+    df: The DataFrame being converted
+    strings_as_factors: Whether to turn strings into R factors (default: False)
+
+    Returns
+    -------
+    A R data.frame
+
     """
-    orderedDict = OrderedDict()
 
-    for columnName in pDataframe.columns:
-        columnValues = pDataframe[columnName].values
-        filteredValues = \
-            [value if pandas.notnull(value) else robj.NA_Real \
-             for value in columnValues]
-        try:
-            orderedDict[columnName] = robj.FloatVector(filteredValues)
-        except ValueError:
-            orderedDict[columnName] = robj.StrVector(filteredValues)
+    columns = rlc.OrdDict()
 
-    rDataFrame = robj.DataFrame(orderedDict)
-    # Use the index to label the rows
-    rDataFrame.rownames = robj.StrVector(pDataframe.index)
+    # FIXME: This doesn't handle MultiIndex
 
-    return rDataFrame
+    for column in df:
+        value = df[column]
+        value_type = value.dtype.type
 
+        if value_type == numpy.datetime64:
+            value = convert_to_r_posixct(value)
+        else:
+            value = [item if pandas.notnull(item) else NA_TYPES[value_type]
+                     for item in value]
+
+            value = VECTOR_TYPES[value_type](value)
+
+            if not strings_as_factors:
+                I = robjects.baseenv.get("I")
+                value = I(value)
+
+        columns[column] = value
+
+    r_dataframe = robjects.DataFrame(columns)
+    r_dataframe.rownames = robjects.StrVector(df.index)
+
+    return r_dataframe
 
 if __name__ == '__main__':
     r = BetteR()
