@@ -123,6 +123,10 @@ class BetteR(object):
             #return robjects.r[attr]
             return Handler(attr)
 
+    def __call__(self, string):
+        robjects.r(string)
+
+
 
 ## CONVERSION
 
