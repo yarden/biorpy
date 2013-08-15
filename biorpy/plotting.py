@@ -38,3 +38,32 @@ def errbars(x=None, y=None, x_lower=None, x_upper=None, y_lower=None, y_upper=No
         raise Exception("must define either (y, x_lower, x_upper) or (x, y_lower, y_upper)")
             
     
+
+def ecdf(vectors, labels, colors=["red", "blue", "orange", "violet", "green", "brown"],
+         xlab="", ylab="cumulative fraction", main="", legendWhere="topleft", **ecdfKwdArgs):
+    """ Take a list of lists, convert them to vectors, and plots them sequentially on a CDF """
+
+    #print "MEANS:", main
+    #for vector, label in zip(convertToVectors, labels):
+    #    print label, numpy.mean(vector)
+        
+    
+
+    ecdfKwdArgs.update({"verticals":True, "do.points":False, "col.hor":colors[0], "col.vert":colors[0]})
+
+    if not "xlim" in ecdfKwdArgs:
+        xlim = [min(min(vector) for vector in vectors),
+                max(max(vector) for vector in vectors)]
+        ecdfKwdArgs["xlim"] = xlim
+
+    r.plot(r.ecdf(vectors[0]), main=main, xlab=xlab, ylab=ylab, **ecdfKwdArgs)
+
+    for i, vector in enumerate(vectors[1:]):
+        r.plot(r.ecdf(vector), add=True,
+                    **{"verticals":True, "do.points":False, "col.hor":colors[i+1], "col.vert":colors[i+1]})
+
+    labelsWithN = []
+    for i, label in enumerate(labels):
+        labelsWithN.append(label+" (n=%d)"%len(vectors[i]))
+    r.legend(legendWhere, legend=labelsWithN, lty=1, lwd=2, col=colors, cex=0.7, bg="white")
+
