@@ -29,10 +29,10 @@ if not os.path.isdir(plots_dir):
 # Make non-melted dataframe example
 def get_nonmelted_df():
     df = pandas.DataFrame({"gene": np.arange(200),
-                           "sample1_expr": scipy.randn(200),
-                           "sample2_expr": scipy.randn(200),
+                           "sample1_expr": scipy.random.uniform(size=200),
+                           "sample2_expr": scipy.random.uniform(size=200),
                            "binding": np.array(["no"]*50+["yes"]*50+["maybe"]*100),
-                           "peak_height": scipy.randn(200)*5})
+                           "peak_height": scipy.random.uniform(size=200)*5})
     return df
 
     
@@ -111,13 +111,40 @@ def melting_dfs():
         ggplot2.facet_grid(Formula("variable ~ binding"))
     p.plot()
 
+    print r_melted
+
+    # plot_fname = os.path.join(plots_dir, "melt4.pdf")
+    # r.pdf(plot_fname)
+    # p = ggplot2.ggplot(r_melted) + \
+    #     ggplot2.geom_area(aes_string(x="gene", y="value", group="binding", fill="binding"), position="fill")# + \
+    #     #ggplot2.facet_grid(Formula("variable ~ binding"))
+    # p.plot()    
     
-    
-    
+  
+def noahtest():
+    df = pandas.DataFrame({"idx":range(5),
+                           "het":[0.2, 0.4, 0.4, 0.3, 0.3],
+                           "hom":[0.6, 0.4, 0.4, 0.7, 0.6],
+                           "unk":[0.2, 0.2, 0.2, 0.0, 0.1]})
+
+    melted_df = pandas.melt(df, id_vars="idx")
+    r_melted = conversion_pydataframe(melted_df)
+
+    r.pdf("plots/noahtest.pdf")
+
+    p = ggplot2.ggplot(r_melted) + \
+        ggplot2.geom_area(aes_string(x="idx", y="value", group="variable", fill="variable"), position="fill")
+    p.plot()
+    # p = ggplot2.ggplot(r_melted) + \
+    #     ggplot2.geom_histogram(aes_string(x="idx", colour="variable"))#, fill="variable")# + \
+    #     #ggplot2.facet_grid(Formula("variable ~ binding"))
+    # p.plot()
 
 def main():
-    iris_plots()
-    melting_dfs()
+    #iris_plots()
+    #melting_dfs()
+
+    noahtest()
 
 
 if __name__ == "__main__":

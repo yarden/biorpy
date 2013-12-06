@@ -84,12 +84,12 @@ class BetteR(object):
         )
 
         self.addHandler_(Handler("plot", 
-            defaults={"xlab":"", "ylab":"", "main":"plot"}
+            defaults={"xlab":"", "ylab":"", "main":""}
             )
         )
 
         self.addHandler_(Handler("hist", 
-            defaults={"xlab":"", "main":"plot"}
+            defaults={"xlab":"", "main":""}
             )
         )
 
@@ -141,8 +141,8 @@ def convertToR(obj):
     """
     if isinstance(obj, pandas.core.frame.DataFrame):
         return pandasDataFrameToRPy2DataFrame(obj)
-    # elif isinstance(obj, pandas.Series):
-    #     return obj
+    elif isinstance(obj, pandas.Series):
+        return convertToR(list(obj))
     elif isinstance(obj, numpy.ndarray):
         return numpy2ri.numpy2ri(obj)
     elif isinstance(obj, list):
@@ -157,6 +157,21 @@ def convertToR(obj):
                 return robjects.StrVector(obj)
             except ValueError:
                 pass
+    elif isinstance(obj, OrderedDict):
+        lengths = set()
+        asrpy2 = OrderedDict()
+
+        for key in obj:
+            asrpy2[key] = convertToR(obj[key])
+            try:
+                lengths.add(len(asrpy2[key]))
+            except:
+                lengths.add(1)
+
+        if len(lengths) == 1:
+            return robjects.DataFrame(asrpy2)
+        else:
+            return robjects.ListVector(asrpy2)
 
 
 
