@@ -110,3 +110,51 @@ def barPlot(dict_, keysInOrder=None, printCounts=True, *args, **kwdargs):
     if printCounts:
         r.text(x, heights, heights, pos=3)
     return x
+
+
+
+def scatterplotMatrix(dataFrame, main="", **kwdargs):
+    """ Plots a scatterplot matrix, with scatterplots in the upper left and correlation
+    values in the lower right.
+
+    >>> t = TaggedList(map(robj.IntVector, [(1,2,3,4,5), (1,3,4,6,6), (6,4,3,2,1)]), ("first", "second", "third"))
+    >>> scatterplotMatrix(t)
+    """
+    robj.r.library("lattice")
+
+    taggedList = TaggedList(map(robj.FloatVector, [dataFrame[col] for col in dataFrame.columns]), dataFrame.columns)
+
+    #print taggedList
+    #df = robj.r['data.frame'](**datapointsDict)
+    #df = robj.r['data.frame'](taggedList)
+    df = robj.DataFrame(taggedList)
+    #print df
+    #robj.r.splom(df)
+    #robj.r.pairs(df)
+
+    robj.r("""panel.cor <- function(x, y, digits=2, prefix="", cex.cor)
+    {
+        usr <- par("usr"); on.exit(par(usr))
+        par(usr = c(0, 1, 0, 1))
+        r <- cor(x, y, method="spearman")
+        scale = abs(r)*0.8+0.2
+        txt <- format(c(r, 0.123456789), digits=digits)[1]
+        txt <- paste(prefix, txt, sep="")
+        if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+        text(0.5, 0.5, txt, cex = cex.cor * scale+0.2)
+    }
+    """)
+    robj.r("""panel.hist <- function(x, ...)
+    {
+        usr <- par("usr"); on.exit(par(usr))
+        par(usr = c(usr[1:2], 0, 1.5) )
+        h <- hist(x, plot = FALSE)
+        breaks <- h$breaks; nB <- length(breaks)
+        y <- h$counts; y <- y/max(y)
+        rect(breaks[-nB], 0, breaks[-1], y, col="lightgrey", ...)
+    }""")
+                                        
+
+    additionalParams = {"upper.panel": robj.r["panel.smooth"], "lower.panel": robj.r["panel.cor"], "diag.panel":robj.r["panel.hist"]}
+    additionalParams.update(kwdargs)
+    robj.r["pairs"](df, main=main, **additionalParams)
