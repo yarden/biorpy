@@ -3,6 +3,7 @@
 ##
 ## nspies in ze house
 ##
+import numpy
 import pandas
 import rpy2
 
@@ -31,15 +32,42 @@ def plot(x, y, **kwargs):
         kwargs["ylab"] = ""
     # Call r.plot here with supplied keyword arguments...
 
-def plotWithCor(x, y, method="spearman", **kwdargs):
-    cor = r.cor(x, y, method=method)[0]
+def plotMulti(xs, ys, names, colors=None, legendWhere="bottomright", **kwdargs):
+    assert len(ys) == len(names)
+    if len(xs) != len(ys):
+        xs = [xs for i in range(len(names))]
+    assert len(xs) == len(ys)
 
-    if "main" in kwdargs:
-        main = kwdargs.pop("main")
-    else:
-        main = ""
+    if colors is None:
+        colors = ["red", "blue", "green", "orange", "brown", "purple", "black"]
+
+    ylim = [min(min(y) for y in ys), max(max(y) for y in ys)]
+    xlim = [min(min(x) for x in xs), max(max(x) for x in xs)]
+
+    plotargs = {"xlab":"", "ylab":"", "xlim":xlim, "ylim":ylim}
+    plotargs.update(kwdargs)
+
+    for i in range(len(xs)):
+        if i == 0:
+            r.plot(xs[0], ys[0], col=colors[0], type="l", **plotargs)
+        else:
+            r.lines(xs[i], ys[i], col=colors[i%len(colors)])
+
+    r.legend(legendWhere, legend=names, lty=1, lwd=2, col=colors, bg="white")
+
+
+def plotWithCor(x, y, method="spearman", main="", **kwdargs):
+    cor = r.cor(x, y, method=method)[0]
         
     r.plot(x, y, main="{} rs = {}".format(main, cor), **kwdargs)
+
+def plotWithFit(x, y, main="", fitkwdargs={}, **plotkwdargs):
+    import scipy.stats
+
+    slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(x, y)
+
+    r.plot(x, y, main="{} r={:.2g} p={:.2g}".format(main, r_value, p_value), **plotkwdargs)
+    r.abline(a=intercept, b=slope, **fitkwdargs)
 
 def errbars(x=None, y=None, x_lower=None, x_upper=None, y_lower=None, y_upper=None, length=0.08, *args, **kwdargs):
     if y is not None and  x_lower is not None  and x_upper is not None:
@@ -52,16 +80,26 @@ def errbars(x=None, y=None, x_lower=None, x_upper=None, y_lower=None, y_upper=No
     
 
 def ecdf(vectors, labels, colors=["red", "blue", "orange", "violet", "green", "brown"],
-         xlab="", ylab="cumulative fraction", main="", legendWhere="topleft", **ecdfKwdArgs):
+         xlab="", ylab="cumulative fraction", main="", legendWhere="topleft", 
+         lty=1, lwd=1, **ecdfKwdArgs):
     """ Take a list of lists, convert them to vectors, and plots them sequentially on a CDF """
 
     #print "MEANS:", main
     #for vector, label in zip(convertToVectors, labels):
     #    print label, numpy.mean(vector)
-        
     
+    def _expand(item):
+        try:
+            iter(item)
+            return item
+        except TypeError:
+            return [item] * len(vectors)
+            
+    
+    lty = _expand(lty)
+    lwd = _expand(lwd)
 
-    ecdfKwdArgs.update({"verticals":True, "do.points":False, "col.hor":colors[0], "col.vert":colors[0]})
+    ecdfKwdArgs.update({"verticals":True, "do.points":False, "col.hor":colors[0], "col.vert":colors[0], "lty":lty[0], "lwd":lwd[0]})
 
     if not "xlim" in ecdfKwdArgs:
         xlim = [min(min(vector) for vector in vectors),
@@ -72,12 +110,13 @@ def ecdf(vectors, labels, colors=["red", "blue", "orange", "violet", "green", "b
 
     for i, vector in enumerate(vectors[1:]):
         r.plot(r.ecdf(vector), add=True,
-                    **{"verticals":True, "do.points":False, "col.hor":colors[i+1], "col.vert":colors[i+1]})
+                    **{"verticals":True, "do.points":False, "col.hor":colors[i+1], "col.vert":colors[i+1],
+                       "lty":lty[i+1], "lwd":lwd[i+1]})
 
     labelsWithN = []
     for i, label in enumerate(labels):
         labelsWithN.append(label+" (n=%d)"%len(vectors[i]))
-    r.legend(legendWhere, legend=labelsWithN, lty=1, lwd=2, col=colors, cex=0.7, bg="white")
+    r.legend(legendWhere, legend=labelsWithN, lty=lty, lwd=[lwdi*2 for lwdi in lwd], col=colors, cex=0.7, bg="white")
 
 
 
@@ -115,10 +154,7 @@ def barPlot(dict_, keysInOrder=None, printCounts=True, *args, **kwdargs):
 
 def scatterplotMatrix(dataFrame, main="", **kwdargs):
     """ Plots a scatterplot matrix, with scatterplots in the upper left and correlation
-    values in the lower right.
-
-    >>> t = TaggedList(map(robj.IntVector, [(1,2,3,4,5), (1,3,4,6,6), (6,4,3,2,1)]), ("first", "second", "third"))
-    >>> scatterplotMatrix(t)
+    values in the lower right. Input is a pandas DataFrame.
     """
     robj.r.library("lattice")
 
@@ -158,3 +194,22 @@ def scatterplotMatrix(dataFrame, main="", **kwdargs):
     additionalParams = {"upper.panel": robj.r["panel.smooth"], "lower.panel": robj.r["panel.cor"], "diag.panel":robj.r["panel.hist"]}
     additionalParams.update(kwdargs)
     robj.r["pairs"](df, main=main, **additionalParams)
+
+
+def plotWithSolidErrbars(x, y, upper, lower, add=False, errbarcol="lightgray", plotargs={}, polygonargs={}):
+    x = numpy.asarray(x)
+
+    errbarx = numpy.concatenate([x, x[::-1]])
+    errbary = numpy.concatenate([upper, lower[::-1]])
+
+    if not add:
+        r.plot(x, y, type="n", **plotargs)
+
+    polygondefaults = {"border":"NA"}
+    polygonargs.update(polygondefaults)
+
+    r.polygon(errbarx, errbary, col=errbarcol, **polygonargs)
+
+    r.lines(x, y, **plotargs)
+
+    return x, y, upper, lower, errbarx, errbary

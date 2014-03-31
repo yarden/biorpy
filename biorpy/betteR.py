@@ -7,6 +7,17 @@ import pandas
 import numpy
 
 
+def isIPy():
+    try:
+        __IPYTHON__
+        return True
+    except NameError:
+        return False
+
+def isInteractive():
+    import __main__ as main
+    return not hasattr(main, '__file__')
+
 ## DEFAULT ARGS, OUTPUT HANDLING
 
 def rx(name):
@@ -21,6 +32,29 @@ def item(i):
 
 
 
+def getDefaultHandlers():
+    handlers = []
+    handlers.append(Handler("wilcox.test", 
+        outputs={"p.value":[rx("p.value"), item(0), item(0)]}
+        )
+    )
+
+    handlers.append(Handler("plot", 
+        defaults={"xlab":"", "ylab":"", "main":""}
+        )
+    )
+
+    handlers.append(Handler("hist", 
+        defaults={"xlab":"", "main":""}
+        )
+    )
+
+    return handlers
+
+def getDefaultAliases():
+    return {"devoff":"dev.off"}
+
+
 class Handler(object):
     """ Wrapper for R objects to implement:
     1. default arguments
@@ -28,20 +62,24 @@ class Handler(object):
     3. output conversion
     """
 
-    def __init__(self, name, defaults=None, outputs=None):
+    def __init__(self, rname, pyname=None, defaults=None, outputs=None):
         """
         :param name: name of the R function
         :param defaults: a dictionary of default arguments to the function
         :param outputs: a dictionary whose values are lists of functions used to 
         extract values from the return R value. For example: {"p.value":[rx("p.value"), item(0), item(0)]}
         """
-        self.name = name
+        self.rname = rname
+        if pyname is None:
+            self.pyname = rname
+        else:
+            self.pyname = pyname
 
         self.defaults = defaults if defaults else {}
         self.outputs = outputs if outputs else {}
 
         # may want some extra error checking here
-        self._robject = robjects.r[self.name]
+        self._robject = robjects.r[self.rname]
 
     def __call__(self, *args, **kwdargs):
         # python -> R conversion
@@ -54,7 +92,7 @@ class Handler(object):
         defaults.update(kwdargs)
 
         # call R        
-        rval = robjects.r[self.name](*args, **defaults)
+        rval = robjects.r[self.rname](*args, **defaults)
         #rval = super(Handler, self).__call__(*args, **defaults)
 
         # output conversion
@@ -73,28 +111,24 @@ class BetteR(object):
     # this in theory could also be a subclass of rpy2.robjects.R
 
     def __init__(self):
-        self.aliases = {"devoff":"dev.off"}
+        self.aliases = getDefaultAliases()
 
         self._handlers = {}
 
-        # XXX the following need to moved somewhere else
-        self.addHandler_(Handler("wilcox.test", 
-            outputs={"p.value":[rx("p.value"), item(0), item(0)]}
-            )
-        )
+        for handler in getDefaultHandlers():
+            self.addHandler_(handler)
 
-        self.addHandler_(Handler("plot", 
-            defaults={"xlab":"", "ylab":"", "main":""}
-            )
-        )
+        if isInteractive():
+            self.initInteractive()
 
-        self.addHandler_(Handler("hist", 
-            defaults={"xlab":"", "main":""}
-            )
-        )
+    def initInteractive(self):
+        # This allows graphics windows to be resized
+        from rpy2.interactive import process_revents
+        process_revents.start()
+
 
     def addHandler_(self, handler):
-        self._handlers[handler.name] = handler
+        self._handlers[handler.pyname] = handler
 
 
     def __getattribute__(self, attr):
@@ -107,8 +141,9 @@ class BetteR(object):
 
         try:
             return self.__getitem__(attr)
-        except LookupError as le:
+        except LookupError:
             raise orig_ae
+
 
     def __getitem__(self, attr):
         if attr in self.aliases:
@@ -117,15 +152,19 @@ class BetteR(object):
         if attr.startswith("gg"):
             print "do something for ggplot..."
 
-        if attr in self._handlers:
-            return self._handlers[attr]
-        else:
-            #return robjects.r[attr]
-            return Handler(attr)
+        if not attr in self._handlers:
+            self._handlers[attr] = Handler(attr)
+        return self._handlers[attr]
+
+        # if attr in self._handlers:
+        #     return self._handlers[attr]
+        # else:
+        #     #return robjects.r[attr]
+        #     return Handler(attr)
+
 
     def __call__(self, string):
         robjects.r(string)
-
 
 
 ## CONVERSION
@@ -145,7 +184,7 @@ def convertToR(obj):
         return convertToR(list(obj))
     elif isinstance(obj, numpy.ndarray):
         return numpy2ri.numpy2ri(obj)
-    elif isinstance(obj, list):
+    elif isinstance(obj, list) or isinstance(obj, tuple):
         if len(obj) == 0:
             return robjects.FloatVector([])
         else:
